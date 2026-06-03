@@ -23,7 +23,7 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
-    // Send a ping to confirm a successful connection
+    
     // await client.db("admin").command({ ping: 1 });
 
     const db = client.db("Tutor-booking")
@@ -34,6 +34,10 @@ async function run() {
         const result = await cursor.toArray();
         // console.log(result)
         res.send(result)
+    })
+
+    app.get('/featured', async (req, res) => {
+      
     })
 
     app.get("/tutors/:tutorsId", async(req, res) => {
