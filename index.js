@@ -37,7 +37,9 @@ async function run() {
     })
 
     app.get('/featured', async (req, res) => {
-      
+      const cursors = tutorList.find().limit(6)
+      const result = await cursors.toArray()
+      res.send(result)
     })
 
     app.get("/tutors/:tutorsId", async(req, res) => {
