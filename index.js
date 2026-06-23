@@ -84,26 +84,84 @@ async function run() {
       res.json(result)
     })
 
-    app.post("/booking", async (req, res) => {
-      const bookingData = req.body;
+   app.post("/booking", async (req, res) => {
+  const bookingData = req.body;
 
-      const existingBooking = await bookingList.findOne({
-        userID: bookingData.userID,
-        tutorId: bookingData.tutorId,
-        status: "booked",
-      });
+  console.log("BOOKING DATA:", bookingData);
 
-      if (existingBooking) {
-        return res.status(400).json({
-          error: true,
-          message: "You have already an active session with this tutor!",
-        });
-      }
+  const existingBooking = await bookingList.findOne({
+    userID: bookingData.userID,
+    tutorId: bookingData.tutorId,
+    status: "booked",
+  });
 
-      const result = await bookingList.insertOne(bookingData);
 
-      res.json(result);
+  if (existingBooking) {
+    return res.status(400).json({
+      error: true,
+      message: "You already booked this tutor",
     });
+  }
+
+  const tutor = await tutorList.findOne({
+    _id: new ObjectId(bookingData.tutorId),
+  });
+
+  if (!tutor) {
+    return res.status(404).json({ message: "Tutor not found" });
+  }
+
+  console.log("TUTOR:", tutor);
+
+  // SLOT FORCE NUMBER CHECK
+  if (Number(tutor.slot) <= 0) {
+    return res.status(400).json({
+      error: true,
+      message: "No slots available",
+    });
+  }
+
+  // DATE CHECK SAFE VERSION
+  const today = new Date();
+  const sessionDate = new Date(tutor.date);
+
+  if (isNaN(sessionDate.getTime())) {
+    return res.status(400).json({
+      error: true,
+      message: "Invalid tutor date format",
+    });
+  }
+
+  today.setHours(0,0,0,0);
+  sessionDate.setHours(0,0,0,0);
+
+  console.log("COMPARE:", today, sessionDate);
+
+  if (today < sessionDate) {
+    return res.status(400).json({
+      error: true,
+      message: "Booking not available yet",
+    });
+  }
+
+  const updateResult = await tutorList.updateOne(
+    { _id: new ObjectId(bookingData.tutorId), slot: { $gt: 0 } },
+    { $inc: { slot: -1 } }
+  );
+
+  console.log("UPDATE RESULT:", updateResult);
+
+  if (updateResult.modifiedCount === 0) {
+    return res.status(400).json({
+      error: true,
+      message: "Slot update failed",
+    });
+  }
+
+  const result = await bookingList.insertOne(bookingData);
+
+  res.json(result);
+});
 
     app.get("/booking/:userID", async (req, res) => {
       const { userID } = req.params;
@@ -112,15 +170,45 @@ async function run() {
     });
 
     app.patch("/booking/cancel/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
-      const updateDoc = {
-        $set: { status: "cancelled" },
-      };
+       const id = req.params.id;
 
-      const result = await bookingList.updateOne(filter, updateDoc);
-
-      res.json(result);
+      const booking = await bookingList.findOne({
+        _id: new ObjectId(id),
+      });
+    
+      if (!booking) {
+        return res.status(404).json({
+          error: true,
+          message: "Booking not found",
+        });
+      }
+    
+  
+      const updateBooking = await bookingList.updateOne(
+        {
+          _id: new ObjectId(id),
+        },
+        {
+          $set: {
+            status: "cancelled",
+          },
+        }
+      );
+    
+    
+      await tutorList.updateOne(
+        {
+          _id: new ObjectId(booking.tutorId),
+        },
+        {
+          $inc: {
+            slot: 1,
+          },
+        }
+      );
+    
+    
+      res.json(updateBooking);
     });
 
     app.delete("/booking/:bookingId", async (req, res) => {
