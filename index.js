@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 dotenv.config();
 const app = express();
 app.use(cors());
@@ -19,6 +20,29 @@ const client = new MongoClient(uri, {
   },
 });
 
+const JWKS = createRemoteJWKSet(
+  new URL("http://localhost:3000/api/auth/jwks")
+)
+
+const verifyToken = async (req, res, next) => {
+  const authHeader = req?.headers.authorization
+
+  if(!authHeader) {
+    return res.status(401).json({message: "Unauthorized"})
+  }
+  const token = authHeader.split(" ")[1]
+  if(!token){
+    return res.status(401).json({message: "Unauthorized"})
+  }
+  
+  try{
+    const {payload} = await jwtVerify(token, JWKS)
+    next()
+  } catch {
+    return res.status(401).json({message : "Forbidden"})
+  }
+}
+
 async function run() {
   try {
     // Connect the client to the server (optional starting in v4.7)
@@ -31,7 +55,7 @@ async function run() {
     const tutorList = db.collection("tutors");
     const bookingList = db.collection("bookings");
 
-    app.post("/tutors", async (req, res) => {
+    app.post("/tutors", verifyToken , async (req, res) => {
       const tutor = req.body;
       const result = await tutorList.insertOne(tutor);
       res.json(result);
@@ -45,12 +69,12 @@ async function run() {
 
 
     app.get("/featured", async (req, res) => {
-      const cursors = tutorList.find().limit(4);
+      const cursors = tutorList.find().limit(6);
       const result = await cursors.toArray();
       res.send(result);
     });
 
-    app.get("/tutors/:tutorsId", async (req, res) => {
+    app.get("/tutors/:tutorsId", verifyToken, async (req, res) => {
       const { tutorsId } = req.params;
       const query = { _id: new ObjectId(tutorsId) };
       const result = await tutorList.findOne(query);
@@ -58,7 +82,7 @@ async function run() {
       res.send(result);
     });
 
-     app.get("/my-tutors/:userId", async (req, res) => {
+     app.get("/my-tutors/:userId", verifyToken, async (req, res) => {
       const { userId } = req.params;
       const result = await tutorList.find({ userId: userId }).toArray();
       res.json(result);
@@ -84,7 +108,7 @@ async function run() {
       res.json(result)
     })
 
-   app.post("/booking", async (req, res) => {
+   app.post("/booking", verifyToken, async (req, res) => {
   const bookingData = req.body;
 
   console.log("BOOKING DATA:", bookingData);
@@ -163,7 +187,7 @@ async function run() {
   res.json(result);
 });
 
-    app.get("/booking/:userID", async (req, res) => {
+    app.get("/booking/:userID", verifyToken, async (req, res) => {
       const { userID } = req.params;
       const result = await bookingList.find({ userID: userID }).toArray();
       res.json(result);
